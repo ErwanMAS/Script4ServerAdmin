@@ -1,0 +1,69 @@
+#!/bin/sh
+#------------------
+if [ -z "$1" ]
+then
+	echo "usage:"
+	echo "$0 nommachinevirtuel [hyperviseur]"
+	exit 1
+fi
+#------------------
+HYPERVISOR=""
+if [ -n "$2" ]
+then
+    HYPERVISOR="$2" 
+fi
+#------------------
+if [ -z "$HYPERVISOR" ]
+then
+	echo "ERREUR il faut specifier l'hyperviseur ou remplir la variable HYPERVISOR avec une liste de serveurs "
+	echo "usage:"
+	echo "$0 nommachinevirtuel [hyperviseur]"
+	exit 1
+fi
+#------------------
+export LANG=C
+SRVVNC=$1
+SRVXEN=""
+VNCIP=""
+VNCNUMBER=""
+#------------------
+for HSRV in ${HYPERVISOR}
+do
+    if [ -z "$SRVXEN" -o -z "$VNCIP" -o -z "$VNCNUMBER" ]
+    then
+	OK=`ssh -oConnectTimeout=40 root@${HSRV} virsh dominfo $SRVVNC 2>/dev/null | grep -c "^.*State:.*running" `
+	if [ "$OK" = 1 ]
+	then
+		SRVXEN=$HSRV
+		VNCIP=`ssh root@$HSRV "virsh vncdisplay $SRVVNC"`
+		VNCNUMBER=$VNCIP
+		VNCIP=`echo $VNCIP  | sed 's/^\(.*\):.*$/\1/p;d'`
+		VNCNUMBER=`echo $VNCNUMBER  | sed 's/^.*:\(.*\)$/\1/p;d'`
+	fi
+    fi
+done
+#------------------
+if [ -z "$SRVXEN" -o -z "$VNCIP" -o -z "$VNCNUMBER" ]
+then
+    echo "ERREUR machine virtuel $SRVVNC eteinte ou inexistante "
+    exit 1
+fi
+export VNC_VIA_CMD="/usr/bin/ssh -oControlPath=none -f -L %L:%H:%R %G sleep 240"
+while ( true ) 
+do
+    if [ -x "/Applications/Chicken.app/Contents/MacOS/Chicken" ]
+    then
+	LP=2001
+	while ( nc -z 127.0.0.1 $LP ) 
+	do
+	    LP=$(( $LP + 1 ))
+	done
+	ssh -oControlPath=none -f -L $LP:$VNCIP:$(( 5900 + $VNCNUMBER )) root@$SRVXEN sleep 20
+	/Applications/Chicken.app/Contents/MacOS/Chicken 127.0.0.1:$LP
+    else
+	xtightvncviewer -via root@$SRVXEN $VNCIP:$VNCNUMBER
+    fi
+    sleep 4
+done
+#------------------
+
